@@ -95,6 +95,29 @@ void CMSEXPORT cmsDeleteTransform(cmsHTRANSFORM hTransform)
     _cmsFree(p ->ContextID, (void *) p);
 }
 
+//#define GATHER_TRANSFORM_STATS
+#ifdef GATHER_TRANSFORM_STATS
+#define UNIQ 32
+static int lastops[UNIQ][4];
+
+int lastpos=0;
+int inited = 0;
+
+void dump_stats(void)
+{
+    int i;
+    if (!inited)
+        return;
+    inited = 0;
+    for (i=0; i < UNIQ; i++)
+    {
+        if (lastops[i][3] != 0) {
+            fprintf(stderr, "CXFORM: %x %x %x %d\n", lastops[i][0], lastops[i][1], lastops[i][2], lastops[i][3]);
+        }
+    }
+}
+#endif
+
 // Apply transform.
 void CMSEXPORT cmsDoTransform(cmsHTRANSFORM  Transform,
                               const void* InputBuffer,
@@ -104,6 +127,35 @@ void CMSEXPORT cmsDoTransform(cmsHTRANSFORM  Transform,
 {
     _cmsTRANSFORM* p = (_cmsTRANSFORM*) Transform;
 
+#ifdef GATHER_TRANSFORM_STATS
+    if (!inited) {
+        atexit(dump_stats);
+	inited = 1;
+    }
+    {
+        int i;
+        for (i=0; i < UNIQ; i++)
+        {
+            if (lastops[i][0] == p->InputFormat && lastops[i][1] == p->OutputFormat && lastops[i][2] == p->dwOriginalFlags)
+                break;
+        }
+        if (i == UNIQ)
+        {
+            i = lastpos++;
+            if (lastpos == UNIQ)
+                lastpos = 0;
+	    if (lastops[i][3] != 0) {
+                fprintf(stderr, "CXFORM: %x %x %x %d\n", lastops[i][0], lastops[i][1], lastops[i][2], lastops[i][3]);
+	    }
+            lastops[i][0] = p->InputFormat;
+            lastops[i][1] = p->OutputFormat;
+            lastops[i][2] = p->dwOriginalFlags;
+            lastops[i][3] = Size;
+	} else {
+            lastops[i][3] += Size;
+	}
+    }
+#endif
     p -> xform(p, InputBuffer, OutputBuffer, Size, Size);
 }
 
